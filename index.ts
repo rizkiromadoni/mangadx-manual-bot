@@ -1,37 +1,49 @@
-import { ask, downloads } from "./helper"
+import fs from "fs-extra"
+
+import { ask, downloads, slugify } from "./helper"
 import Scraper from "./scraper"
 import Server from "./server"
 import Storage from "./storage"
 
 const ServerOptions = {
-   apiURL: "",
-   apiKey: "",
-   authorId: 1
+   apiURL: "https://mangasusu.cyou",
+   apiKey: "57bf06d8-435c-4ba4-9b86-dfd80dfdfa5e",
+   authorId: 4
 }
 
 const ScraperOptions = {
-   webName: "",
-   apiURL: "",
-   apiKey: "",
+   webName: "komiktap",
+   apiURL: "https://manga-api.rcodx.dev",
+   apiKey: "aec865ec-2367-4605-a31a-eeeec67d942b"
 }
 
 const StorageOptions = {
-   storageUrl: "",
-   endpoint: "",
-   accessKey: "",
-   secretKey: "",
-   bucket: "",
-   region: "",
-   root: ""
+   storageUrl: "https://gambar.mangasusu.lat",
+   endpoint: "https://fsn1.your-objectstorage.com",
+   accessKey: "JGLWY1BNMBBWHXB4L72R",
+   secretKey: "IfQ3iQfvI2ndrzt9WbFQL3zuflhGqFzIUcEbi9Pd",
+   bucket: "dataall",
+   region: "fsn1",
+   root: "image.mangayaro.com/ichimonji"
 }
 
 const server = new Server(ServerOptions)
 const scraper = new Scraper(ScraperOptions)
 const storage = new Storage(StorageOptions)
 
+process.on('SIGINT', async () => {
+   console.log('Cleaning tmp files...');
+   await fs.remove("./images/ichimonji")
+   process.exit(1);
+ });
+
 while (true) {
    const input = await ask("Input series URL or 1 to exit: ")
-   if (input === "1") break
+   if (input === "1") {
+      console.log('Cleaning tmp files...');
+      await fs.remove("./images/ichimonji")
+      break
+   }
 
    const slug = input.split("/")[4]
    if (!slug) {
@@ -77,18 +89,21 @@ while (true) {
             console.log(`Scraping chapter ${item.chapter}...`)
             const chapterData = await scraper.getChapter(item.url)
             console.log(`Chapter scraped!, Title: ${chapterData.title}`)
+
+            const seriesTitleSlug = slugify(series.title)
+            const chapterSlug = slugify(item.chapter)
    
             console.log(`Downloading chapter ${item.chapter}...`)
             const filepaths = await downloads(chapterData.sources, {
                identity: "ichimonji",
-               title: series.title,
-               chapter: item.chapter
+               title: seriesTitleSlug,
+               chapter: chapterSlug
              })
    
             console.log(`Uploading chapter ${item.chapter}...`)
-            const dir = `${series.title[0].toLowerCase()}/${series.title
+            const dir = `${series.title[0].toLowerCase()}/${seriesTitleSlug
             .toLowerCase()
-            .replace(/ /g, "-")}/chapter-${item.chapter
+            .replace(/ /g, "-")}/chapter-${chapterSlug
             .toLowerCase()
             .replace(/ /g, "-")}`
             const stored = await storage.uploads(filepaths, dir)
@@ -98,7 +113,7 @@ while (true) {
                seriesId: serverSeries.data.id,
                title: chapterData.title,
                chapter: item.chapter,
-               sources: stored.map(item => item.replace("", ""))
+               sources: stored.map(item => item.replace("image.mangayaro.com/", ""))
              })
    
             if (newChapter.status !== "success") throw new Error(`[SERVER][POST][CHAPTER] ${newChapter.status}`)
